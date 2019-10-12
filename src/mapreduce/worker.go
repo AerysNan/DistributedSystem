@@ -38,8 +38,7 @@ type Worker struct {
 // DoTask is called by the master when a new task is being scheduled on this
 // worker.
 func (wk *Worker) DoTask(arg *DoTaskArgs, _ *struct{}) error {
-	logrus.Infof("%s: given %v task #%d on file %s (nios: %d)\n",
-		wk.name, arg.Phase, arg.TaskNumber, arg.File, arg.NumOtherPhase)
+	logrus.WithField("address", wk.name).Infof("Given %v task #%d on file %s (nios: %d)\n", arg.Phase, arg.TaskNumber, arg.File, arg.NumOtherPhase)
 	wk.Lock()
 	wk.nTasks += 1
 	wk.concurrent += 1
@@ -88,14 +87,14 @@ func (wk *Worker) DoTask(arg *DoTaskArgs, _ *struct{}) error {
 		wk.parallelism.mu.Unlock()
 	}
 
-	logrus.Infof("%s: %v task #%d done\n", wk.name, arg.Phase, arg.TaskNumber)
+	logrus.WithField("address", wk.name).Infof("Done %v task #%d", arg.Phase, arg.TaskNumber)
 	return nil
 }
 
 // Shutdown is called by the master when all work has been completed.
 // We should respond with the number of tasks we have processed.
 func (wk *Worker) Shutdown(_ *struct{}, res *ShutdownReply) error {
-	debug("Shutdown %s\n", wk.name)
+	logrus.WithField("address", wk.name).Info("Worker shutdown")
 	wk.Lock()
 	defer wk.Unlock()
 	res.Ntasks = wk.nTasks
@@ -120,7 +119,7 @@ func RunWorker(MasterAddress string, me string,
 	ReduceFunc func(string, []string) string,
 	nRPC int, parallelism *Parallelism,
 ) {
-	debug("RunWorker %s\n", me)
+	logrus.WithField("address", me).Info("Run Worker")
 	wk := new(Worker)
 	wk.name = me
 	wk.Map = MapFunc
@@ -156,5 +155,5 @@ func RunWorker(MasterAddress string, me string,
 		}
 	}
 	wk.l.Close()
-	debug("RunWorker %s exit\n", me)
+	logrus.Infof("RunWorker %s exit\n", me)
 }

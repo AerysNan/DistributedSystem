@@ -1,6 +1,10 @@
 package mapreduce
 
-import "fmt"
+import (
+	"sync"
+
+	"github.com/sirupsen/logrus"
+)
 
 //
 // schedule() starts and waits for all tasks in the given phase (mapPhase
@@ -23,12 +27,25 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 		n_other = len(mapFiles)
 	}
 
-	fmt.Printf("Schedule: %v %v tasks (%d I/Os)\n", ntasks, phase, n_other)
+	logrus.Infof("Schedule %v %v tasks (%d I/Os)\n", ntasks, phase, n_other)
 
-	// All ntasks tasks have to be scheduled on workers. Once all tasks
-	// have completed successfully, schedule() should return.
-	//
-	// Your code here (Part III, Part IV).
-	//
-	fmt.Printf("Schedule: %v done\n", phase)
+	w := sync.WaitGroup{}
+	w.Add(ntasks)
+	for i := 0; i < ntasks; i++ {
+		go func(i int) {
+			args := DoTaskArgs{
+				JobName:       jobName,
+				File:          mapFiles[i],
+				Phase:         phase,
+				TaskNumber:    i,
+				NumOtherPhase: n_other,
+			}
+			address := <-registerChan
+			call(address, "Worker.DoTask", args, nil)
+			w.Done()
+			registerChan <- address
+		}(i)
+	}
+	w.Wait()
+	logrus.Infof("Schedule %v done\n", phase)
 }

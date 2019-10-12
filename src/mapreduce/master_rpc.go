@@ -11,7 +11,7 @@ import (
 
 // Shutdown is an RPC method that shuts down the Master's RPC server.
 func (mr *Master) Shutdown(_, _ *struct{}) error {
-	debug("Shutdown: registration server\n")
+	logrus.Info("Shutdown registration server")
 	close(mr.shutdown)
 	mr.l.Close() // causes the Accept to fail
 	return nil
@@ -46,11 +46,11 @@ func (mr *Master) startRPCServer() {
 					conn.Close()
 				}()
 			} else {
-				debug("RegistrationServer: accept error %v", err)
+				logrus.WithError(err).Error("RegistrationServer: accept error")
 				break
 			}
 		}
-		debug("RegistrationServer: done\n")
+		logrus.Info("RegistrationServer done")
 	}()
 }
 
@@ -61,7 +61,7 @@ func (mr *Master) stopRPCServer() {
 	var reply ShutdownReply
 	ok := call(mr.address, "Master.Shutdown", new(struct{}), &reply)
 	if !ok {
-		logrus.Infof("Cleanup: RPC %s error\n", mr.address)
+		logrus.WithField("address", mr.address).Info("Cleanup RPC error")
 	}
-	debug("cleanupRegistration: done\n")
+	logrus.Info("Cleanup Registration done")
 }
