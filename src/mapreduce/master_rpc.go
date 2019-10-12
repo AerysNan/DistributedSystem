@@ -1,11 +1,12 @@
 package mapreduce
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/rpc"
 	"os"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Shutdown is an RPC method that shuts down the Master's RPC server.
@@ -60,7 +61,7 @@ func (mr *Master) stopRPCServer() {
 	var reply ShutdownReply
 	ok := call(mr.address, "Master.Shutdown", new(struct{}), &reply)
 	if !ok {
-		fmt.Printf("Cleanup: RPC %s error\n", mr.address)
+		logrus.Infof("Cleanup: RPC %s error\n", mr.address)
 	}
 	debug("cleanupRegistration: done\n")
 }

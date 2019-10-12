@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"sort"
+
+	"github.com/sirupsen/logrus"
 )
 
 // merge combines the results of the many reduce jobs into a single output file
@@ -16,7 +18,7 @@ func (mr *Master) merge() {
 	kvs := make(map[string]string)
 	for i := 0; i < mr.nReduce; i++ {
 		p := mergeName(mr.jobName, i)
-		fmt.Printf("Merge: read %s\n", p)
+		logrus.Infof("Merge: read %s\n", p)
 		file, err := os.Open(p)
 		if err != nil {
 			log.Fatal("Merge: ", err)

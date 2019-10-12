@@ -1,19 +1,8 @@
 package mapreduce
 
 import (
-	"fmt"
 	"strconv"
 )
-
-// Debugging enabled?
-const debugEnabled = false
-
-// debug() will only print if debugEnabled is true
-func debug(format string, a ...interface{}) {
-	if debugEnabled {
-		fmt.Printf(format, a...)
-	}
-}
 
 // jobPhase indicates whether a task is scheduled as a map or reduce task.
 type jobPhase string

@@ -5,7 +5,6 @@ package mapreduce
 //
 
 import (
-	"fmt"
 	"net"
 	"net/rpc"
 	"os"
@@ -39,9 +38,8 @@ type Worker struct {
 // DoTask is called by the master when a new task is being scheduled on this
 // worker.
 func (wk *Worker) DoTask(arg *DoTaskArgs, _ *struct{}) error {
-	fmt.Printf("%s: given %v task #%d on file %s (nios: %d)\n",
+	logrus.Infof("%s: given %v task #%d on file %s (nios: %d)\n",
 		wk.name, arg.Phase, arg.TaskNumber, arg.File, arg.NumOtherPhase)
-
 	wk.Lock()
 	wk.nTasks += 1
 	wk.concurrent += 1
@@ -90,7 +88,7 @@ func (wk *Worker) DoTask(arg *DoTaskArgs, _ *struct{}) error {
 		wk.parallelism.mu.Unlock()
 	}
 
-	fmt.Printf("%s: %v task #%d done\n", wk.name, arg.Phase, arg.TaskNumber)
+	logrus.Infof("%s: %v task #%d done\n", wk.name, arg.Phase, arg.TaskNumber)
 	return nil
 }
 
@@ -111,7 +109,7 @@ func (wk *Worker) register(master string) {
 	args.Worker = wk.name
 	ok := call(master, "Master.Register", args, new(struct{}))
 	if !ok {
-		fmt.Printf("Register: RPC %s register error\n", master)
+		logrus.Infof("Register: RPC %s register error\n", master)
 	}
 }
 

@@ -1,8 +1,9 @@
 package mapreduce
 
 import (
-	"fmt"
 	"net/rpc"
+
+	"github.com/sirupsen/logrus"
 )
 
 // What follows are RPC types and methods.
@@ -61,6 +62,6 @@ func call(srv string, rpcname string,
 		return true
 	}
 
-	fmt.Println(err)
+	logrus.Error(err)
 	return false
 }

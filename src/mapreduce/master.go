@@ -5,9 +5,10 @@ package mapreduce
 //
 
 import (
-	"fmt"
 	"net"
 	"sync"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Master holds all the state that the master needs to keep track of.
@@ -137,14 +138,14 @@ func (mr *Master) run(jobName string, files []string, nreduce int,
 	mr.files = files
 	mr.nReduce = nreduce
 
-	fmt.Printf("%s: Starting Map/Reduce task %s\n", mr.address, mr.jobName)
+	logrus.Infof("%s: Starting Map/Reduce task %s\n", mr.address, mr.jobName)
 
 	schedule(mapPhase)
 	schedule(reducePhase)
 	finish()
 	mr.merge()
 
-	fmt.Printf("%s: Map/Reduce task completed\n", mr.address)
+	logrus.Infof("%s: Map/Reduce task completed\n", mr.address)
 
 	mr.doneChannel <- true
 }
@@ -167,7 +168,7 @@ func (mr *Master) killWorkers() []int {
 		var reply ShutdownReply
 		ok := call(w, "Worker.Shutdown", new(struct{}), &reply)
 		if !ok {
-			fmt.Printf("Master: RPC %s shutdown error\n", w)
+			logrus.Infof("Master: RPC %s shutdown error\n", w)
 		} else {
 			ntasks = append(ntasks, reply.Ntasks)
 		}

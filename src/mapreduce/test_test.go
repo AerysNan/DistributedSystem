@@ -123,10 +123,7 @@ func makeInputs(num int) []string {
 func port(suffix string) string {
 	s := "/var/tmp/824-"
 	s += strconv.Itoa(os.Getuid()) + "/"
-	err := os.Mkdir(s, 0777)
-	if err != nil {
-		logrus.WithError(err).Fatal("Create directory failed")
-	}
+	_ = os.Mkdir(s, 0777)
 	s += "mr"
 	s += strconv.Itoa(os.Getpid()) + "-"
 	s += suffix
