@@ -46,7 +46,7 @@ func reduceF(key string, values []string) string {
 // 3) Worker (e.g., go run wc.go worker localhost:7777 localhost:7778 &)
 func main() {
 	if len(os.Args) < 4 {
-		logrus.Infof("%s: see usage comments in file\n", os.Args[0])
+		logrus.Warnf("%s see usage comments in file\n", os.Args[0])
 	} else if os.Args[1] == "master" {
 		var mr *mapreduce.Master
 		if os.Args[2] == "sequential" {

@@ -63,7 +63,7 @@ var ncpu_once sync.Once
 func make_config(t *testing.T, n int, unreliable bool) *config {
 	ncpu_once.Do(func() {
 		if runtime.NumCPU() < 2 {
-			logrus.Warnf("warning: only one CPU, which may conceal locking bugs\n")
+			logrus.Warnf("Only one CPU, which may conceal locking bugs")
 		}
 		rand.Seed(makeSeed())
 	})

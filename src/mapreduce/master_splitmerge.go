@@ -14,11 +14,11 @@ import (
 // merge combines the results of the many reduce jobs into a single output file
 // XXX use merge sort
 func (mr *Master) merge() {
-	logrus.Infof("Merge phase")
+	logrus.Debug("Merge phase")
 	kvs := make(map[string]string)
 	for i := 0; i < mr.nReduce; i++ {
 		p := mergeName(mr.jobName, i)
-		logrus.Infof("Merge read %s\n", p)
+		logrus.Debugf("Merge read %s", p)
 		file, err := os.Open(p)
 		if err != nil {
 			logrus.WithError(err).Fatal("Merge failed")

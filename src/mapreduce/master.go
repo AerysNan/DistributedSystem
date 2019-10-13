@@ -37,7 +37,7 @@ type Master struct {
 func (mr *Master) Register(args *RegisterArgs, _ *struct{}) error {
 	mr.Lock()
 	defer mr.Unlock()
-	logrus.WithField("address", args.Worker).Info("Register worker")
+	logrus.WithField("address", args.Worker).Debug("Register worker")
 	mr.workers = append(mr.workers, args.Worker)
 
 	// tell forwardRegistrations() that there's a new workers[] entry.
@@ -138,14 +138,14 @@ func (mr *Master) run(jobName string, files []string, nreduce int,
 	mr.files = files
 	mr.nReduce = nreduce
 
-	logrus.WithField("address", mr.address).Info("Start task")
+	logrus.WithField("address", mr.address).Debug("Start task")
 
 	schedule(mapPhase)
 	schedule(reducePhase)
 	finish()
 	mr.merge()
 
-	logrus.WithField("address", mr.address).Info("Map/Reduce task completed")
+	logrus.WithField("address", mr.address).Debug("Map/Reduce task completed")
 
 	mr.doneChannel <- true
 }
@@ -164,11 +164,11 @@ func (mr *Master) killWorkers() []int {
 	defer mr.Unlock()
 	ntasks := make([]int, 0, len(mr.workers))
 	for _, w := range mr.workers {
-		logrus.WithField("address", w).Info("Master shutdown worker")
+		logrus.WithField("address", w).Debug("Master shutdown worker")
 		var reply ShutdownReply
 		ok := call(w, "Worker.Shutdown", new(struct{}), &reply)
 		if !ok {
-			logrus.WithField("address", w).Info("Master RPC shutdown error")
+			logrus.WithField("address", w).Debug("Master RPC shutdown error")
 		} else {
 			ntasks = append(ntasks, reply.Ntasks)
 		}

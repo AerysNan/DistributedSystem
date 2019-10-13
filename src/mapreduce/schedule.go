@@ -27,7 +27,7 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 		n_other = len(mapFiles)
 	}
 
-	logrus.Infof("Schedule %v %v tasks (%d I/Os)\n", ntasks, phase, n_other)
+	logrus.Debugf("Schedule %v %v tasks (%d I/Os)\n", ntasks, phase, n_other)
 
 	w := sync.WaitGroup{}
 	w.Add(ntasks)
@@ -51,5 +51,5 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 		}(i)
 	}
 	w.Wait()
-	logrus.Infof("Schedule %v done\n", phase)
+	logrus.Debugf("Schedule %v done", phase)
 }

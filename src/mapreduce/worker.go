@@ -38,7 +38,7 @@ type Worker struct {
 // DoTask is called by the master when a new task is being scheduled on this
 // worker.
 func (wk *Worker) DoTask(arg *DoTaskArgs, _ *struct{}) error {
-	logrus.WithField("address", wk.name).Infof("Given %v task #%d on file %s (nios: %d)\n", arg.Phase, arg.TaskNumber, arg.File, arg.NumOtherPhase)
+	logrus.WithField("address", wk.name).Debugf("Given %v task #%d on file %s (nios: %d)", arg.Phase, arg.TaskNumber, arg.File, arg.NumOtherPhase)
 	wk.Lock()
 	wk.nTasks += 1
 	wk.concurrent += 1
@@ -87,14 +87,14 @@ func (wk *Worker) DoTask(arg *DoTaskArgs, _ *struct{}) error {
 		wk.parallelism.mu.Unlock()
 	}
 
-	logrus.WithField("address", wk.name).Infof("Done %v task #%d", arg.Phase, arg.TaskNumber)
+	logrus.WithField("address", wk.name).Debugf("Done %v task #%d", arg.Phase, arg.TaskNumber)
 	return nil
 }
 
 // Shutdown is called by the master when all work has been completed.
 // We should respond with the number of tasks we have processed.
 func (wk *Worker) Shutdown(_ *struct{}, res *ShutdownReply) error {
-	logrus.WithField("address", wk.name).Info("Worker shutdown")
+	logrus.WithField("address", wk.name).Debug("Worker shutdown")
 	wk.Lock()
 	defer wk.Unlock()
 	res.Ntasks = wk.nTasks
@@ -108,7 +108,7 @@ func (wk *Worker) register(master string) {
 	args.Worker = wk.name
 	ok := call(master, "Master.Register", args, new(struct{}))
 	if !ok {
-		logrus.Infof("Register: RPC %s register error\n", master)
+		logrus.Debugf("Register RPC %s register error", master)
 	}
 }
 
@@ -119,7 +119,7 @@ func RunWorker(MasterAddress string, me string,
 	ReduceFunc func(string, []string) string,
 	nRPC int, parallelism *Parallelism,
 ) {
-	logrus.WithField("address", me).Info("Run Worker")
+	logrus.WithField("address", me).Debug("Run Worker")
 	wk := new(Worker)
 	wk.name = me
 	wk.Map = MapFunc
@@ -155,5 +155,5 @@ func RunWorker(MasterAddress string, me string,
 		}
 	}
 	wk.l.Close()
-	logrus.Infof("RunWorker %s exit\n", me)
+	logrus.Debugf("RunWorker %s exit", me)
 }
