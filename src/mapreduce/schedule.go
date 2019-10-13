@@ -40,10 +40,14 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 				TaskNumber:    i,
 				NumOtherPhase: n_other,
 			}
-			address := <-registerChan
-			call(address, "Worker.DoTask", args, nil)
-			w.Done()
-			registerChan <- address
+			for {
+				address := <-registerChan
+				if result := call(address, "Worker.DoTask", args, nil); result {
+					w.Done()
+					registerChan <- address
+					break
+				}
+			}
 		}(i)
 	}
 	w.Wait()
