@@ -331,6 +331,7 @@ func TestRejoin2B(t *testing.T) {
 
 func TestBackup2B(t *testing.T) {
 	servers := 5
+	cases := 50
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
 
@@ -340,19 +341,31 @@ func TestBackup2B(t *testing.T) {
 
 	// put leader and one follower in a partition
 	leader1 := cfg.checkOneLeader()
+
+	DPrintf("%v disconnected", (leader1+2)%servers)
+	DPrintf("%v disconnected", (leader1+3)%servers)
+	DPrintf("%v disconnected", (leader1+4)%servers)
+
 	cfg.disconnect((leader1 + 2) % servers)
 	cfg.disconnect((leader1 + 3) % servers)
 	cfg.disconnect((leader1 + 4) % servers)
 
 	// submit lots of commands that won't commit
-	for i := 0; i < 50; i++ {
+	for i := 0; i < cases; i++ {
 		cfg.rafts[leader1].Start(rand.Int())
 	}
 
 	time.Sleep(RaftElectionTimeout / 2)
 
+	DPrintf("%v disconnected", (leader1+0)%servers)
+	DPrintf("%v disconnected", (leader1+1)%servers)
+
 	cfg.disconnect((leader1 + 0) % servers)
 	cfg.disconnect((leader1 + 1) % servers)
+
+	DPrintf("%v connected", (leader1+2)%servers)
+	DPrintf("%v connected", (leader1+3)%servers)
+	DPrintf("%v connected", (leader1+4)%servers)
 
 	// allow other partition to recover
 	cfg.connect((leader1 + 2) % servers)
@@ -360,7 +373,7 @@ func TestBackup2B(t *testing.T) {
 	cfg.connect((leader1 + 4) % servers)
 
 	// lots of successful commands to new group.
-	for i := 0; i < 50; i++ {
+	for i := 0; i < cases; i++ {
 		cfg.one(rand.Int(), 3, true)
 	}
 
@@ -370,10 +383,13 @@ func TestBackup2B(t *testing.T) {
 	if leader2 == other {
 		other = (leader2 + 1) % servers
 	}
+	DPrintf("%v connected", (leader1+4)%servers)
+	cfg.connect((leader1 + 4) % servers)
+	DPrintf("%v disconnected", other)
 	cfg.disconnect(other)
 
 	// lots more commands that won't commit
-	for i := 0; i < 50; i++ {
+	for i := 0; i < cases; i++ {
 		cfg.rafts[leader2].Start(rand.Int())
 	}
 
@@ -381,19 +397,25 @@ func TestBackup2B(t *testing.T) {
 
 	// bring original leader back to life,
 	for i := 0; i < servers; i++ {
+		DPrintf("%v disconnected", i)
 		cfg.disconnect(i)
 	}
+	DPrintf("%v connected", (leader1+0)%servers)
+	DPrintf("%v connected", (leader1+1)%servers)
+	DPrintf("%v connected", other)
+
 	cfg.connect((leader1 + 0) % servers)
 	cfg.connect((leader1 + 1) % servers)
 	cfg.connect(other)
 
 	// lots of successful commands to new group.
-	for i := 0; i < 50; i++ {
+	for i := 0; i < cases; i++ {
 		cfg.one(rand.Int(), 3, true)
 	}
 
 	// now everyone
 	for i := 0; i < servers; i++ {
+		DPrintf("%v connected", i)
 		cfg.connect(i)
 	}
 	cfg.one(rand.Int(), servers, true)
@@ -414,6 +436,7 @@ func TestCount2B(t *testing.T) {
 		}
 		return
 	}
+	leader := cfg.checkOneLeader()
 
 	total1 := rpcs()
 
@@ -430,7 +453,7 @@ loop:
 			time.Sleep(3 * time.Second)
 		}
 
-		leader := cfg.checkOneLeader()
+		leader = cfg.checkOneLeader()
 		total1 = rpcs()
 
 		iters := 10

@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"github.com/sirupsen/logrus"
 	"math/rand"
 	"time"
@@ -26,6 +27,14 @@ func StateToString(state int) string {
 		return "leader"
 	}
 	return ""
+}
+
+func EntriesToString(entries []LogEntry) string {
+	s := ""
+	for _, entry := range entries {
+		s += fmt.Sprintf("%v ", entry.Term)
+	}
+	return fmt.Sprintf("{%v}", s)
 }
 
 func RandomRange(min int, max int) time.Duration {
