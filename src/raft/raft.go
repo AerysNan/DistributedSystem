@@ -18,6 +18,8 @@ package raft
 //
 
 import (
+	"bytes"
+	"distributed/labgob"
 	"distributed/labrpc"
 	"sync"
 	"time"
@@ -98,6 +100,7 @@ func (rf *Raft) transitState(state int) {
 		rf.heartTimer.Stop()
 		rf.electTimer.Reset(RandomRange(ElectTimeoutMin, ElectTimeoutMax) * time.Millisecond)
 		rf.votedFor = -1
+		rf.persist()
 	case StateCandidate:
 	case StateLeader:
 		for i := range rf.nextIndex {
@@ -126,36 +129,37 @@ func (rf *Raft) GetState() (int, bool) {
 // see paper's Figure 2 for a description of what should be persistent.
 //
 func (rf *Raft) persist() {
-	// Your code here (2C).
-	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.logs)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 //
 // restore previously persisted state.
 //
 func (rf *Raft) readPersist(data []byte) {
-	if data == nil || len(data) < 1 { // bootstrap without any state?
+	if data == nil || len(data) < 1 {
 		return
 	}
-	// Your code here (2C).
-	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm, votedFor int
+	var logs []LogEntry
+	if d.Decode(&currentTerm) != nil ||
+		d.Decode(&votedFor) != nil ||
+		d.Decode(&logs) != nil {
+		DPrintf("[%v(%v)] read persist failed", rf.me, rf.currentTerm)
+		return
+	}
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	rf.currentTerm = currentTerm
+	rf.votedFor = votedFor
+	rf.logs = logs
 }
 
 //
@@ -188,8 +192,10 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
-	Term    int
-	Success bool
+	Term          int
+	Success       bool
+	ConflictTerm  int
+	ConflictIndex int
 }
 
 func (rf *Raft) startElection() {
@@ -232,6 +238,7 @@ func (rf *Raft) startElection() {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer rf.persist()
 	DPrintf("[%v(%v)] receive request vote from %v(%v)", rf.me, rf.currentTerm, args.CandidateId, args.Term)
 	end := len(rf.logs) - 1
 	if rf.currentTerm > args.Term ||
@@ -261,6 +268,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer rf.persist()
 	DPrintf("[%v(%v)] with logs %v receive append entries %v from %v(%v)", rf.me, rf.currentTerm, EntriesToString(rf.logs), EntriesToString(args.Entries), args.LeaderId, args.Term)
 	if rf.currentTerm > args.Term {
 		reply.Success = false
@@ -273,6 +281,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.logs[args.PrevLogIndex].Term != args.PrevLogTerm {
 		reply.Success = false
 		reply.Term = rf.currentTerm
+		if len(rf.logs)-1 < args.PrevLogIndex {
+			reply.ConflictIndex = len(rf.logs)
+			reply.ConflictTerm = -1
+		} else {
+			reply.ConflictTerm = rf.logs[args.PrevLogIndex].Term
+			index := args.PrevLogIndex
+			for rf.logs[index-1].Term == reply.ConflictTerm {
+				index--
+			}
+			reply.ConflictIndex = index
+		}
 		DPrintf("[%v(%v)] reject append entries due to log mismatch", rf.me, rf.currentTerm)
 		return
 	}
@@ -380,6 +399,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		})
 		rf.nextIndex[rf.me] = index + 1
 		rf.matchIndex[rf.me] = index
+		rf.persist()
 		rf.mu.Unlock()
 	}
 	return index, term, isLeader
@@ -439,8 +459,17 @@ func (rf *Raft) broadcastHeartbeat() {
 					if reply.Term > rf.currentTerm {
 						rf.currentTerm = reply.Term
 						rf.transitState(StateFollower)
+						rf.persist()
 					} else {
-						rf.nextIndex[receiver] -= 1
+						rf.nextIndex[receiver] = reply.ConflictIndex
+						if reply.ConflictTerm != -1 {
+							for i := args.PrevLogIndex; i >= 1; i-- {
+								if rf.logs[i-1].Term == reply.ConflictTerm {
+									rf.nextIndex[receiver] = i
+									break
+								}
+							}
+						}
 					}
 				}
 				rf.mu.Unlock()
@@ -456,6 +485,7 @@ func (rf *Raft) startTimer() {
 			rf.mu.Lock()
 			rf.transitState(StateCandidate)
 			rf.currentTerm += 1
+			rf.persist()
 			DPrintf("[%v(%v)] election timer timeout", rf.me, rf.currentTerm)
 			rf.startElection()
 			rf.mu.Unlock()
@@ -488,7 +518,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 
-	// Your initialization code here (2C).
 	rf.currentTerm = 0
 	rf.votedFor = -1
 	rf.state = StateFollower
