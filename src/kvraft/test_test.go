@@ -1,8 +1,7 @@
 package raftkv
 
 import (
-	"linearizability"
-	"log"
+	"distributed/linearizability"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -209,11 +208,11 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 				} else {
 					v := Get(cfg, myck, key)
 					if v != last {
-						logrus.WithFields(logrus.Fields({
-							"key" : key,
+						logrus.WithFields(logrus.Fields{
+							"key":    key,
 							"wanted": last,
 							"actual": v,
-						})).Fatal("Get wrong value")
+						}).Fatal("Get wrong value")
 					}
 				}
 			}

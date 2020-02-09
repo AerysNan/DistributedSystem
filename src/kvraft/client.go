@@ -7,8 +7,10 @@ import (
 )
 
 type Clerk struct {
-	servers []*labrpc.ClientEnd
-	// You will have to modify this struct.
+	servers   []*labrpc.ClientEnd
+	leaderId  int64
+	clientId  int64
+	commandId int64
 }
 
 func nrand() int64 {
@@ -19,9 +21,12 @@ func nrand() int64 {
 }
 
 func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
-	ck := new(Clerk)
-	ck.servers = servers
-	// You'll have to add code here.
+	ck := &Clerk{
+		servers:   servers,
+		clientId:  nrand(),
+		commandId: 0,
+		leaderId:  0,
+	}
 	return ck
 }
 
@@ -38,9 +43,20 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
-
-	// You will have to modify this function.
-	return ""
+	for {
+		args := GetArgs{
+			Key:       key,
+			ClientId:  ck.clientId,
+			CommandId: ck.commandId,
+		}
+		var reply GetReply
+		if ok := ck.servers[ck.leaderId].Call("KVServer.Get", &args, &reply); !ok || reply.WrongLeader {
+			ck.leaderId = (ck.leaderId + 1) % int64(len(ck.servers))
+			continue
+		}
+		ck.commandId += 1
+		return reply.Value
+	}
 }
 
 //
@@ -54,7 +70,22 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	// You will have to modify this function.
+	for {
+		args := PutAppendArgs{
+			Key:       key,
+			Value:     value,
+			Op:        op,
+			ClientId:  ck.clientId,
+			CommandId: ck.commandId,
+		}
+		var reply PutAppendReply
+		if ok := ck.servers[ck.leaderId].Call("KVServer.PutAppend", &args, &reply); !ok || reply.WrongLeader {
+			ck.leaderId = (ck.leaderId + 1) % int64(len(ck.servers))
+			continue
+		}
+		ck.commandId += 1
+		return
+	}
 }
 
 func (ck *Clerk) Put(key string, value string) {

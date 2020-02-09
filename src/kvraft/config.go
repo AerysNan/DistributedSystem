@@ -407,7 +407,7 @@ func (cfg *config) op() {
 // and some performance numbers.
 func (cfg *config) end() {
 	cfg.checkTimeout()
-	if cfg.t.Failed()! {
+	if !cfg.t.Failed() {
 		t := time.Since(cfg.t0).Seconds()  // real time
 		npeers := cfg.n                    // number of Raft peers
 		nrpc := cfg.rpcTotal() - cfg.rpcs0 // number of RPC sends
