@@ -45,6 +45,11 @@ type KVServer struct {
 	commandIds   map[int64]int64
 }
 
+func (kv *KVServer) isDuplicateRequest(clientId int64, requestId int64) bool {
+	appliedRequestId, ok := kv.commandIds[clientId]
+	return ok && requestId <= appliedRequestId
+}
+
 func (kv *KVServer) execute(op Op, timeout time.Duration) bool {
 	index, _, isLeader := kv.rf.Start(op)
 	if !isLeader {
@@ -56,18 +61,19 @@ func (kv *KVServer) execute(op Op, timeout time.Duration) bool {
 	}
 	ch := kv.notifyChs[index]
 	kv.mu.Unlock()
+	var wrongLeader bool
 	select {
 	case result := <-ch:
-		kv.mu.Lock()
-		delete(kv.notifyChs, index)
-		kv.mu.Unlock()
-		if !result.equals(op) {
-			return true
-		}
-		return false
+		wrongLeader = !result.equals(op)
 	case <-time.After(timeout):
-		return true
+		kv.mu.Lock()
+		wrongLeader = !kv.isDuplicateRequest(op.ClientId, op.CommandId)
+		kv.mu.Unlock()
 	}
+	kv.mu.Lock()
+	delete(kv.notifyChs, index)
+	kv.mu.Unlock()
+	return wrongLeader
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -108,22 +114,21 @@ func (kv *KVServer) dispatch() {
 		}
 		op := message.Command.(Op)
 		kv.mu.Lock()
-		commandId, ok := kv.commandIds[op.ClientId]
-		if !ok || commandId < op.CommandId {
-			switch op.Type {
-			case "Put":
-				kv.entries[op.Key] = op.Value
-			case "Append":
-				kv.entries[op.Key] += op.Value
-			}
-			kv.commandIds[op.ClientId] = op.CommandId
-		}
-		ch, ok := kv.notifyChs[message.CommandIndex]
-		kv.mu.Unlock()
-		if !ok {
+		if kv.isDuplicateRequest(op.ClientId, op.CommandId) {
+			kv.mu.Unlock()
 			continue
 		}
-		ch <- op
+		switch op.Type {
+		case "Put":
+			kv.entries[op.Key] = op.Value
+		case "Append":
+			kv.entries[op.Key] += op.Value
+		}
+		kv.commandIds[op.ClientId] = op.CommandId
+		if ch, ok := kv.notifyChs[message.CommandIndex]; ok {
+			ch <- op
+		}
+		kv.mu.Unlock()
 	}
 }
 

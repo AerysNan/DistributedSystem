@@ -9,12 +9,13 @@ package shardkv
 //
 
 import (
-	"distributed/labrpc"
 	"crypto/rand"
-	"math/big"
+	"distributed/labrpc"
 	"distributed/shardmaster"
+	"math/big"
 	"time"
 )
+
 //
 // which shard is a key in?
 // please use this function,
@@ -79,7 +80,7 @@ func (ck *Clerk) Get(key string) string {
 				srv := ck.make_end(servers[si])
 				var reply GetReply
 				ok := srv.Call("ShardKV.Get", &args, &reply)
-				if ok && reply.!WrongLeader && (reply.Err == OK || reply.Err == ErrNoKey) {
+				if ok && !reply.WrongLeader && (reply.Err == OK || reply.Err == ErrNoKey) {
 					return reply.Value
 				}
 				if ok && (reply.Err == ErrWrongGroup) {
@@ -105,7 +106,6 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.Value = value
 	args.Op = op
 
-
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
@@ -114,7 +114,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				srv := ck.make_end(servers[si])
 				var reply PutAppendReply
 				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
-				if ok && reply.!WrongLeader && reply.Err == OK {
+				if ok && !reply.WrongLeader && reply.Err == OK {
 					return
 				}
 				if ok && reply.Err == ErrWrongGroup {

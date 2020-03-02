@@ -1,8 +1,8 @@
 package shardkv
 
 import (
+	"distributed/linearizability"
 	"fmt"
-	"linearizability"
 	"math/rand"
 	"strconv"
 	"sync"
