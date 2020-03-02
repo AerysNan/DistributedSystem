@@ -2,20 +2,11 @@ package raft
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"math/rand"
 	"time"
 )
 
 // Debugging
-const Debug = 0
-
-func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug > 0 {
-		logrus.Printf(format, a...)
-	}
-	return
-}
 
 func StateToString(state int) string {
 	switch state {

@@ -1,37 +1,16 @@
 package raftkv
 
 import (
+	"bytes"
 	"distributed/labgob"
 	"distributed/labrpc"
 	"distributed/raft"
+	"distributed/util"
 	"sync"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
-const Debug = 0
-
 const ExecuteTimeout = 500 * time.Millisecond
-
-func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug > 0 {
-		logrus.Printf(format, a...)
-	}
-	return
-}
-
-type Op struct {
-	Key       string
-	Value     string
-	Type      string
-	ClientId  int64
-	CommandId int64
-}
-
-func (op *Op) equals(other Op) bool {
-	return op.ClientId == other.ClientId && op.CommandId == other.CommandId
-}
 
 type KVServer struct {
 	mu      sync.Mutex
@@ -40,9 +19,11 @@ type KVServer struct {
 	applyCh chan raft.ApplyMsg
 
 	maxraftstate int // snapshot if log grows this big
-	entries      map[string]string
-	notifyChs    map[int]chan Op
-	commandIds   map[int64]int64
+
+	entries             map[string]string
+	notifyChs           map[int]chan util.Op
+	commandIds          map[int64]int64
+	appliedRaftLogIndex int
 }
 
 func (kv *KVServer) isDuplicateRequest(clientId int64, requestId int64) bool {
@@ -50,21 +31,35 @@ func (kv *KVServer) isDuplicateRequest(clientId int64, requestId int64) bool {
 	return ok && requestId <= appliedRequestId
 }
 
-func (kv *KVServer) execute(op Op, timeout time.Duration) bool {
+func (kv *KVServer) snapshot() {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	kv.mu.Lock()
+	e.Encode(kv.entries)
+	e.Encode(kv.commandIds)
+	appliedRaftLogIndex := kv.appliedRaftLogIndex
+	kv.mu.Unlock()
+	kv.rf.ReplaceLogWithSnapshot(appliedRaftLogIndex, w.Bytes())
+}
+
+func (kv *KVServer) execute(op util.Op, timeout time.Duration) bool {
 	index, _, isLeader := kv.rf.Start(op)
 	if !isLeader {
 		return true
 	}
+	if kv.maxraftstate >= 0 && kv.rf.RaftStateSize() >= kv.maxraftstate {
+		kv.snapshot()
+	}
 	kv.mu.Lock()
 	if _, ok := kv.notifyChs[index]; !ok {
-		kv.notifyChs[index] = make(chan Op, 1)
+		kv.notifyChs[index] = make(chan util.Op, 1)
 	}
 	ch := kv.notifyChs[index]
 	kv.mu.Unlock()
 	var wrongLeader bool
 	select {
 	case result := <-ch:
-		wrongLeader = !result.equals(op)
+		wrongLeader = !result.Equals(op)
 	case <-time.After(timeout):
 		kv.mu.Lock()
 		wrongLeader = !kv.isDuplicateRequest(op.ClientId, op.CommandId)
@@ -76,8 +71,22 @@ func (kv *KVServer) execute(op Op, timeout time.Duration) bool {
 	return wrongLeader
 }
 
+func (kv *KVServer) installSnapshot(snapshot []byte) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if snapshot == nil {
+		return
+	}
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+	if d.Decode(&kv.entries) != nil ||
+		d.Decode(&kv.commandIds) != nil {
+		util.DPrintf("[%vT%vS%v] install snapshot failed", kv.me, kv.rf.CurrentTerm(), kv.rf.SnapshotIndex())
+	}
+}
+
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	op := Op{
+	op := util.Op{
 		Key:       args.Key,
 		Type:      "Get",
 		ClientId:  args.ClientId,
@@ -97,7 +106,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	op := Op{
+	op := util.Op{
 		Key:       args.Key,
 		Value:     args.Value,
 		Type:      args.Op,
@@ -112,7 +121,11 @@ func (kv *KVServer) dispatch() {
 		if !message.CommandValid {
 			continue
 		}
-		op := message.Command.(Op)
+		op := message.Command.(util.Op)
+		if op.Type == "Snapshot" {
+			kv.installSnapshot([]byte(op.Value))
+			continue
+		}
 		kv.mu.Lock()
 		if kv.isDuplicateRequest(op.ClientId, op.CommandId) {
 			kv.mu.Unlock()
@@ -125,6 +138,7 @@ func (kv *KVServer) dispatch() {
 			kv.entries[op.Key] += op.Value
 		}
 		kv.commandIds[op.ClientId] = op.CommandId
+		kv.appliedRaftLogIndex = message.CommandIndex
 		if ch, ok := kv.notifyChs[message.CommandIndex]; ok {
 			ch <- op
 		}
@@ -160,16 +174,17 @@ func (kv *KVServer) Kill() {
 func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int) *KVServer {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
-	labgob.Register(Op{})
+	labgob.Register(util.Op{})
 
 	kv := new(KVServer)
 	kv.me = me
 	kv.maxraftstate = maxraftstate
 	kv.entries = make(map[string]string)
-	kv.notifyChs = make(map[int]chan Op)
+	kv.notifyChs = make(map[int]chan util.Op)
 	kv.commandIds = make(map[int64]int64)
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
+	kv.installSnapshot(persister.ReadSnapshot())
 	go kv.dispatch()
 	return kv
 }

@@ -2,6 +2,7 @@ package raftkv
 
 import (
 	"distributed/linearizability"
+	"distributed/util"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -240,6 +241,7 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 		}
 
 		if crash {
+			util.DPrintf("Shutdown all servers")
 			for i := 0; i < nservers; i++ {
 				cfg.ShutdownServer(i)
 			}
@@ -247,6 +249,7 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 			// shutdown isn't a real crash and isn't instantaneous
 			time.Sleep(electionTimeout)
 			// crash and re-start all
+			util.DPrintf("Restart all servers")
 			for i := 0; i < nservers; i++ {
 				cfg.StartServer(i)
 			}
@@ -596,6 +599,7 @@ func TestSnapshotRPC3B(t *testing.T) {
 	check(cfg, t, ck, "a", "A")
 
 	// a bunch of puts into the majority partition.
+	util.DPrintf("Network partion between {0, 1} and {2}")
 	cfg.partition([]int{0, 1}, []int{2})
 	{
 		ck1 := cfg.makeClient([]int{0, 1})
@@ -614,6 +618,7 @@ func TestSnapshotRPC3B(t *testing.T) {
 
 	// now make group that requires participation of
 	// lagging server, so that it has to catch up.
+	util.DPrintf("Network partion between {0, 2} and {1}")
 	cfg.partition([]int{0, 2}, []int{1})
 	{
 		ck1 := cfg.makeClient([]int{0, 2})
@@ -626,6 +631,7 @@ func TestSnapshotRPC3B(t *testing.T) {
 	}
 
 	// now everybody
+	util.DPrintf("Network partion end")
 	cfg.partition([]int{0, 1, 2}, []int{})
 
 	Put(cfg, ck, "e", "E")

@@ -305,7 +305,6 @@ func (cfg *config) StartServer(i int) {
 		cfg.saved[i] = raft.MakePersister()
 	}
 	cfg.mu.Unlock()
-
 	cfg.kvservers[i] = StartKVServer(ends, i, cfg.saved[i], cfg.maxraftstate)
 
 	kvsvc := labrpc.MakeService(cfg.kvservers[i])
