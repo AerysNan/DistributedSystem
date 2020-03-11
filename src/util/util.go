@@ -1,24 +1,38 @@
 package util
 
-import "github.com/sirupsen/logrus"
+const (
+	OpJoin = iota
+	OpMove
+	OpLeave
+	OpQuery
+
+	OpPut
+	OpAppend
+	OpGet
+
+	OpSnapshot
+	OpReconfigure
+)
 
 type Op struct {
-	Key       string
-	Value     string
-	Type      string
+	Type      int
 	ClientId  int64
 	CommandId int64
+	Args      interface{}
+}
+
+type Response struct {
+	Op         Op
+	WrongGroup bool
 }
 
 func (op *Op) Equals(other Op) bool {
+	if op.Type == OpReconfigure {
+		return op.Args.(ReconfigureArgs).Config.Num == other.Args.(ReconfigureArgs).Config.Num
+	}
 	return op.ClientId == other.ClientId && op.CommandId == other.CommandId
 }
 
-const Debug = 0
-
-func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug > 0 {
-		logrus.Printf(format, a...)
-	}
-	return
+type SnapshotArgs struct {
+	Data []byte
 }

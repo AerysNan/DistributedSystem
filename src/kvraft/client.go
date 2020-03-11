@@ -3,6 +3,7 @@ package raftkv
 import (
 	"crypto/rand"
 	"distributed/labrpc"
+	"distributed/util"
 	"math/big"
 )
 
@@ -44,12 +45,12 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 //
 func (ck *Clerk) Get(key string) string {
 	for {
-		args := GetArgs{
+		args := util.GetArgs{
 			Key:       key,
 			ClientId:  ck.clientId,
 			CommandId: ck.commandId,
 		}
-		var reply GetReply
+		var reply util.GetReply
 		if ok := ck.servers[ck.leaderId].Call("KVServer.Get", &args, &reply); !ok || reply.WrongLeader {
 			ck.leaderId = (ck.leaderId + 1) % int64(len(ck.servers))
 			continue
@@ -70,15 +71,21 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
+	var opType int
+	if op == "Put" {
+		opType = util.OpPut
+	} else {
+		opType = util.OpAppend
+	}
 	for {
-		args := PutAppendArgs{
+		args := util.PutAppendArgs{
 			Key:       key,
 			Value:     value,
-			Op:        op,
+			Op:        opType,
 			ClientId:  ck.clientId,
 			CommandId: ck.commandId,
 		}
-		var reply PutAppendReply
+		var reply util.PutAppendReply
 		if ok := ck.servers[ck.leaderId].Call("KVServer.PutAppend", &args, &reply); !ok || reply.WrongLeader {
 			ck.leaderId = (ck.leaderId + 1) % int64(len(ck.servers))
 			continue

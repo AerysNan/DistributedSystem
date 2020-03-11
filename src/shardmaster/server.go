@@ -7,13 +7,8 @@ import (
 	"distributed/util"
 	"sync"
 	"time"
-)
 
-const (
-	OpJoin = iota
-	OpMove
-	OpLeave
-	OpQuery
+	"github.com/sirupsen/logrus"
 )
 
 const ExecuteTimeout = 500 * time.Millisecond
@@ -24,20 +19,10 @@ type ShardMaster struct {
 	rf      *raft.Raft
 	applyCh chan raft.ApplyMsg
 
-	configs    []Config // indexed by config num
+	logger     *logrus.Logger
+	configs    []util.Config
 	commandIds map[int64]int64
-	notifyChs  map[int]chan Op
-}
-
-type Op struct {
-	Type      int
-	ClientId  int64
-	CommandId int64
-	Args      interface{}
-}
-
-func (op *Op) Equals(other Op) bool {
-	return op.ClientId == other.ClientId && op.CommandId == other.CommandId
+	notifyChs  map[int]chan util.Op
 }
 
 func (sm *ShardMaster) isDuplicateRequest(clientId int64, requestId int64) bool {
@@ -45,15 +30,15 @@ func (sm *ShardMaster) isDuplicateRequest(clientId int64, requestId int64) bool 
 	return ok && requestId <= appliedRequestId
 }
 
-func (sm *ShardMaster) execute(op Op, timeout time.Duration) bool {
-	util.DPrintf("ShardMaster[%v] execute operation %v", sm.me, op)
+func (sm *ShardMaster) execute(op util.Op, timeout time.Duration) bool {
+	sm.logger.Infof("ShardMaster[%v] execute operation %v", sm.me, op)
 	index, _, isLeader := sm.rf.Start(op)
 	if !isLeader {
 		return true
 	}
 	sm.mu.Lock()
 	if _, ok := sm.notifyChs[index]; !ok {
-		sm.notifyChs[index] = make(chan Op, 1)
+		sm.notifyChs[index] = make(chan util.Op, 1)
 	}
 	ch := sm.notifyChs[index]
 	sm.mu.Unlock()
@@ -72,10 +57,10 @@ func (sm *ShardMaster) execute(op Op, timeout time.Duration) bool {
 	return wrongLeader
 }
 
-func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
-	op := Op{
+func (sm *ShardMaster) Join(args *util.JoinArgs, reply *util.JoinReply) {
+	op := util.Op{
 		Args:      *args,
-		Type:      OpJoin,
+		Type:      util.OpJoin,
 		ClientId:  args.ClientId,
 		CommandId: args.CommandId,
 	}
@@ -83,13 +68,13 @@ func (sm *ShardMaster) Join(args *JoinArgs, reply *JoinReply) {
 	if reply.WrongLeader {
 		return
 	}
-	reply.Err = OK
+	reply.Err = util.OK
 }
 
-func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
-	op := Op{
+func (sm *ShardMaster) Leave(args *util.LeaveArgs, reply *util.LeaveReply) {
+	op := util.Op{
 		Args:      *args,
-		Type:      OpLeave,
+		Type:      util.OpLeave,
 		ClientId:  args.ClientId,
 		CommandId: args.CommandId,
 	}
@@ -97,13 +82,13 @@ func (sm *ShardMaster) Leave(args *LeaveArgs, reply *LeaveReply) {
 	if reply.WrongLeader {
 		return
 	}
-	reply.Err = OK
+	reply.Err = util.OK
 }
 
-func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
-	op := Op{
+func (sm *ShardMaster) Move(args *util.MoveArgs, reply *util.MoveReply) {
+	op := util.Op{
 		Args:      *args,
-		Type:      OpMove,
+		Type:      util.OpMove,
 		ClientId:  args.ClientId,
 		CommandId: args.CommandId,
 	}
@@ -111,13 +96,13 @@ func (sm *ShardMaster) Move(args *MoveArgs, reply *MoveReply) {
 	if reply.WrongLeader {
 		return
 	}
-	reply.Err = OK
+	reply.Err = util.OK
 }
 
-func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
-	op := Op{
+func (sm *ShardMaster) Query(args *util.QueryArgs, reply *util.QueryReply) {
+	op := util.Op{
 		Args:      *args,
-		Type:      OpQuery,
+		Type:      util.OpQuery,
 		ClientId:  args.ClientId,
 		CommandId: args.CommandId,
 	}
@@ -129,10 +114,12 @@ func (sm *ShardMaster) Query(args *QueryArgs, reply *QueryReply) {
 	defer sm.mu.Unlock()
 	if args.Num == -1 {
 		reply.Config = sm.configs[len(sm.configs)-1]
-	} else {
+	} else if args.Num < len(sm.configs) {
 		reply.Config = sm.configs[args.Num]
+	} else {
+		reply.Config = sm.configs[len(sm.configs)-1]
 	}
-	reply.Err = OK
+	reply.Err = util.OK
 }
 
 //
@@ -156,19 +143,19 @@ func (sm *ShardMaster) dispatch() {
 		if !message.CommandValid {
 			continue
 		}
-		op := message.Command.(Op)
+		op := message.Command.(util.Op)
 		sm.mu.Lock()
 		if sm.isDuplicateRequest(op.ClientId, op.CommandId) {
 			sm.mu.Unlock()
 			continue
 		}
 		switch op.Type {
-		case OpJoin:
-			sm.PerformJoin(op.Args.(JoinArgs))
-		case OpLeave:
-			sm.PerformLeave(op.Args.(LeaveArgs))
-		case OpMove:
-			sm.PerformMove(op.Args.(MoveArgs))
+		case util.OpJoin:
+			sm.PerformJoin(op.Args.(util.JoinArgs))
+		case util.OpLeave:
+			sm.PerformLeave(op.Args.(util.LeaveArgs))
+		case util.OpMove:
+			sm.PerformMove(op.Args.(util.MoveArgs))
 		}
 		sm.commandIds[op.ClientId] = op.CommandId
 		if ch, ok := sm.notifyChs[message.CommandIndex]; ok {
@@ -178,7 +165,7 @@ func (sm *ShardMaster) dispatch() {
 	}
 }
 
-func (sm *ShardMaster) PerformJoin(args JoinArgs) {
+func (sm *ShardMaster) PerformJoin(args util.JoinArgs) {
 	config := sm.configs[len(sm.configs)-1]
 	newGroups := make(map[int][]string)
 	for gid, servers := range config.Groups {
@@ -204,20 +191,20 @@ func (sm *ShardMaster) PerformJoin(args JoinArgs) {
 		m[target] = append(m[target], m[source][0])
 		m[source] = m[source][1:]
 	}
-	var newShards [NShards]int
+	var newShards [util.NShards]int
 	for gid, shards := range m {
 		for _, shard := range shards {
 			newShards[shard] = gid
 		}
 	}
-	sm.configs = append(sm.configs, Config{
+	sm.configs = append(sm.configs, util.Config{
 		Num:    len(sm.configs),
 		Shards: newShards,
 		Groups: newGroups,
 	})
 }
 
-func (sm *ShardMaster) PerformLeave(args LeaveArgs) {
+func (sm *ShardMaster) PerformLeave(args util.LeaveArgs) {
 	config := sm.configs[len(sm.configs)-1]
 	m := sm.Group2Shards(config)
 	shards := make([]int, 0)
@@ -234,9 +221,9 @@ func (sm *ShardMaster) PerformLeave(args LeaveArgs) {
 			delete(m, gid)
 		}
 	}
-	var newShards [NShards]int
+	var newShards [util.NShards]int
 	if len(newGroups) == 0 {
-		for i := 0; i < NShards; i++ {
+		for i := 0; i < util.NShards; i++ {
 			newShards[i] = 0
 		}
 	} else {
@@ -250,14 +237,14 @@ func (sm *ShardMaster) PerformLeave(args LeaveArgs) {
 			}
 		}
 	}
-	sm.configs = append(sm.configs, Config{
+	sm.configs = append(sm.configs, util.Config{
 		Num:    len(sm.configs),
 		Shards: newShards,
 		Groups: newGroups,
 	})
 }
 
-func (sm *ShardMaster) PerformMove(args MoveArgs) {
+func (sm *ShardMaster) PerformMove(args util.MoveArgs) {
 	config := sm.configs[len(sm.configs)-1]
 	newGroups := make(map[int][]string)
 	for gid, servers := range config.Groups {
@@ -265,12 +252,12 @@ func (sm *ShardMaster) PerformMove(args MoveArgs) {
 		copy(newServers, servers)
 		newGroups[gid] = newServers
 	}
-	var newShards [NShards]int
+	var newShards [util.NShards]int
 	for i, gid := range config.Shards {
 		newShards[i] = gid
 	}
 	newShards[args.Shard] = args.GID
-	newConfig := Config{
+	newConfig := util.Config{
 		Num:    len(sm.configs),
 		Groups: newGroups,
 		Shards: newShards,
@@ -295,7 +282,7 @@ func (sm *ShardMaster) GetSource(m map[int][]int) int {
 
 func (sm *ShardMaster) GetTarget(m map[int][]int) int {
 	index := -1
-	min := NShards + 1
+	min := util.NShards + 1
 	for gid, shards := range m {
 		if gid != 0 && len(shards) < min {
 			min = len(shards)
@@ -305,7 +292,7 @@ func (sm *ShardMaster) GetTarget(m map[int][]int) int {
 	return index
 }
 
-func (sm *ShardMaster) Group2Shards(config Config) map[int][]int {
+func (sm *ShardMaster) Group2Shards(config util.Config) map[int][]int {
 	m := make(map[int][]int)
 	for gid := range config.Groups {
 		m[gid] = make([]int, 0)
@@ -323,20 +310,22 @@ func (sm *ShardMaster) Group2Shards(config Config) map[int][]int {
 // me is the index of the current server in servers[].
 //
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardMaster {
-	labgob.Register(Op{})
-	labgob.Register(JoinArgs{})
-	labgob.Register(LeaveArgs{})
-	labgob.Register(MoveArgs{})
-	labgob.Register(QueryArgs{})
+	labgob.Register(util.Op{})
+	labgob.Register(util.JoinArgs{})
+	labgob.Register(util.LeaveArgs{})
+	labgob.Register(util.MoveArgs{})
+	labgob.Register(util.QueryArgs{})
 
 	sm := new(ShardMaster)
 	sm.me = me
-	sm.configs = make([]Config, 1)
+	sm.configs = make([]util.Config, 1)
 	sm.configs[0].Groups = map[int][]string{}
 	sm.applyCh = make(chan raft.ApplyMsg)
 	sm.rf = raft.Make(servers, me, persister, sm.applyCh)
 	sm.commandIds = make(map[int64]int64)
-	sm.notifyChs = make(map[int]chan Op)
+	sm.notifyChs = make(map[int]chan util.Op)
+	sm.logger = logrus.New()
+	sm.logger.SetLevel(logrus.ErrorLevel)
 	go sm.dispatch()
 	return sm
 }

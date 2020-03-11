@@ -24,6 +24,8 @@ import (
 	"distributed/util"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // import "bytes"
@@ -90,6 +92,7 @@ type Raft struct {
 
 	electTimer *time.Timer
 	heartTimer *time.Timer
+	logger     *logrus.Logger
 }
 
 func (rf *Raft) CurrentTerm() int {
@@ -112,7 +115,7 @@ func (rf *Raft) transitState(state int) {
 	if rf.state == state {
 		return
 	}
-	util.DPrintf("[%vT%vS%v] transit from state %v to state %v", rf.me, rf.currentTerm, rf.snapshotIndex, StateToString(rf.state), StateToString(state))
+	rf.logger.Debugf("[%vT%vS%v] transit from state %v to state %v", rf.me, rf.currentTerm, rf.snapshotIndex, StateToString(rf.state), StateToString(state))
 	switch state {
 	case StateFollower:
 		rf.heartTimer.Stop()
@@ -169,7 +172,7 @@ func (rf *Raft) readPersist(data []byte) {
 		d.Decode(&votedFor) != nil ||
 		d.Decode(&snapshotIndex) != nil ||
 		d.Decode(&logs) != nil {
-		util.DPrintf("[%vT%vS%v] read persist failed", rf.me, rf.currentTerm, rf.snapshotIndex)
+		rf.logger.Warnf("[%vT%vS%v] read persist failed", rf.me, rf.currentTerm, rf.snapshotIndex)
 		return
 	}
 	rf.currentTerm = currentTerm
@@ -269,7 +272,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	defer rf.persist()
-	util.DPrintf("[%vT%vS%v] receive request vote from [%vT%v]", rf.me, rf.currentTerm, rf.snapshotIndex, args.CandidateId, args.Term)
+	rf.logger.Debugf("[%vT%vS%v] receive request vote from [%vT%v]", rf.me, rf.currentTerm, rf.snapshotIndex, args.CandidateId, args.Term)
 	end := len(rf.logs) - 1
 	if rf.currentTerm > args.Term ||
 		(rf.currentTerm == args.Term && rf.votedFor != -1) {
@@ -299,16 +302,16 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	defer rf.persist()
-	util.DPrintf("[%vT%vS%v] with logs %v receive append entries %v from [%vT%v]", rf.me, rf.currentTerm, rf.snapshotIndex, EntriesToString(rf.logs), EntriesToString(args.Entries), args.LeaderId, args.Term)
+	rf.logger.Debugf("[%vT%vS%v] with logs %v receive append entries %v from [%vT%v]", rf.me, rf.currentTerm, rf.snapshotIndex, EntriesToString(rf.logs), EntriesToString(args.Entries), args.LeaderId, args.Term)
 	if rf.currentTerm > args.Term {
 		reply.Success = false
 		reply.Term = rf.currentTerm
-		util.DPrintf("[%vT%vS%v] reject append entries due to term", rf.me, rf.currentTerm, rf.snapshotIndex)
+		rf.logger.Debugf("[%vT%vS%v] reject append entries due to term", rf.me, rf.currentTerm, rf.snapshotIndex)
 		return
 	}
 	rf.electTimer.Reset(RandomRange(ElectTimeoutMin, ElectTimeoutMax) * time.Millisecond)
 	if args.PrevLogIndex <= rf.snapshotIndex {
-		util.DPrintf("[%vT%vS%v] previous index %v before snapshot index %v", rf.me, rf.currentTerm, rf.snapshotIndex, args.PrevLogIndex, rf.snapshotIndex)
+		rf.logger.Debugf("[%vT%vS%v] previous index %v before snapshot index %v", rf.me, rf.currentTerm, rf.snapshotIndex, args.PrevLogIndex, rf.snapshotIndex)
 		reply.Success = true
 		reply.Term = rf.currentTerm
 		if args.PrevLogIndex+len(args.Entries) > rf.snapshotIndex {
@@ -319,10 +322,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			end := rf.toAbsolute(len(rf.logs) - 1)
 			if args.LeaderCommit <= end {
 				rf.commitIndex = args.LeaderCommit
-				util.DPrintf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, args.LeaderCommit)
+				rf.logger.Debugf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, args.LeaderCommit)
 			} else {
 				rf.commitIndex = end
-				util.DPrintf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, end)
+				rf.logger.Debugf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, end)
 			}
 			rf.apply()
 		}
@@ -343,7 +346,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 			reply.ConflictIndex = index
 		}
-		util.DPrintf("[%vT%vS%v] reject append entries due to log mismatch", rf.me, rf.currentTerm, rf.snapshotIndex)
+		rf.logger.Debugf("[%vT%vS%v] reject append entries due to log mismatch", rf.me, rf.currentTerm, rf.snapshotIndex)
 		return
 	}
 	for index, entry := range args.Entries {
@@ -357,10 +360,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		end := rf.toAbsolute(len(rf.logs) - 1)
 		if args.LeaderCommit <= end {
 			rf.commitIndex = args.LeaderCommit
-			util.DPrintf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, args.LeaderCommit)
+			rf.logger.Debugf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, args.LeaderCommit)
 		} else {
 			rf.commitIndex = end
-			util.DPrintf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, end)
+			rf.logger.Debugf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, end)
 		}
 		rf.apply()
 	}
@@ -388,12 +391,12 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	} else {
 		rf.logs = []LogEntry{{Term: args.LastIncludedTerm, Command: nil}}
 	}
-	util.DPrintf("[%vT%vS%v] install snapshot to index %v", rf.me, rf.currentTerm, rf.snapshotIndex, args.LastIncludedIndex)
+	rf.logger.Infof("[%vT%vS%v] install snapshot to index %v", rf.me, rf.currentTerm, rf.snapshotIndex, args.LastIncludedIndex)
 	rf.snapshotIndex = args.LastIncludedIndex
 	if rf.commitIndex < rf.snapshotIndex {
 		rf.commitIndex = rf.snapshotIndex
 	}
-	util.DPrintf("[%vT%vS%v] commit index now %v after install snapshot", rf.me, rf.currentTerm, rf.snapshotIndex, rf.commitIndex)
+	rf.logger.Debugf("[%vT%vS%v] commit index now %v after install snapshot", rf.me, rf.currentTerm, rf.snapshotIndex, rf.commitIndex)
 	if rf.lastApplied < rf.snapshotIndex {
 		rf.lastApplied = rf.snapshotIndex
 	}
@@ -405,8 +408,10 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		CommandValid: true,
 		CommandIndex: rf.snapshotIndex,
 		Command: util.Op{
-			Type:  "Snapshot",
-			Value: string(rf.persister.ReadSnapshot()),
+			Type: util.OpSnapshot,
+			Args: util.SnapshotArgs{
+				Data: rf.persister.ReadSnapshot(),
+			},
 		},
 	}
 	go func(msg ApplyMsg) {
@@ -419,23 +424,24 @@ func (rf *Raft) apply() {
 		return
 	}
 	entries := rf.logs[rf.toRelative(rf.lastApplied+1):rf.toRelative(rf.commitIndex+1)]
+	c := make([]LogEntry, len(entries))
+	copy(c, entries)
 	go func(start int, entries []LogEntry) {
 		for offset, entry := range entries {
-			util.DPrintf("[%vT%vS%v] send command %v to channel", rf.me, rf.currentTerm, rf.snapshotIndex, entry.Command)
 			rf.applyCh <- ApplyMsg{
 				CommandValid: true,
 				Command:      entry.Command,
 				CommandIndex: start + offset,
 			}
-
 			rf.mu.Lock()
+			rf.logger.Infof("[%vT%vS%v] send command %v to channel", rf.me, rf.currentTerm, rf.snapshotIndex, entry.Command)
 			if rf.lastApplied < start+offset {
 				rf.lastApplied = start + offset
 			}
 			rf.mu.Unlock()
 		}
-	}(rf.lastApplied+1, entries)
-	util.DPrintf("[%vT%vS%v] apply entries %v~%v", rf.me, rf.currentTerm, rf.snapshotIndex, rf.lastApplied+1, rf.commitIndex)
+	}(rf.lastApplied+1, c)
+	rf.logger.Debugf("[%vT%vS%v] apply entries %v-%v", rf.me, rf.currentTerm, rf.snapshotIndex, rf.lastApplied+1, rf.commitIndex)
 }
 
 //
@@ -494,11 +500,11 @@ func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	util.DPrintf("[%vT%vS%v] start command %v", rf.me, rf.currentTerm, rf.snapshotIndex, command)
 	index := -1
 	term, isLeader := rf.GetState()
 	if isLeader {
 		rf.mu.Lock()
+		rf.logger.Infof("[%vT%vS%v] start command %v", rf.me, rf.currentTerm, rf.snapshotIndex, command)
 		index = rf.toAbsolute(len(rf.logs))
 		rf.logs = append(rf.logs, LogEntry{
 			Command: command,
@@ -528,7 +534,7 @@ func (rf *Raft) Kill() {
 }
 
 func (rf *Raft) broadcastHeartbeat() {
-	util.DPrintf("[%vT%vS%v] broadcast heartbeat with logs %v", rf.me, rf.currentTerm, rf.snapshotIndex, EntriesToString(rf.logs))
+	rf.logger.Debugf("[%vT%vS%v] broadcast heartbeat with logs %v", rf.me, rf.currentTerm, rf.snapshotIndex, EntriesToString(rf.logs))
 	for i := range rf.peers {
 		if i == rf.me {
 			continue
@@ -575,7 +581,7 @@ func (rf *Raft) broadcastHeartbeat() {
 						}
 						if count > len(rf.peers)/2 {
 							rf.commitIndex = j
-							util.DPrintf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, j)
+							rf.logger.Debugf("[%vT%vS%v] update commit index to %v", rf.me, rf.currentTerm, rf.snapshotIndex, j)
 							rf.apply()
 							break
 						}
@@ -608,7 +614,7 @@ func (rf *Raft) startTimer() {
 		select {
 		case <-rf.electTimer.C:
 			rf.mu.Lock()
-			util.DPrintf("[%vT%vS%v] election timer timeout", rf.me, rf.currentTerm, rf.snapshotIndex)
+			rf.logger.Debugf("[%vT%vS%v] election timer timeout", rf.me, rf.currentTerm, rf.snapshotIndex)
 			rf.transitState(StateCandidate)
 			rf.currentTerm += 1
 			rf.persist()
@@ -639,9 +645,10 @@ func (rf *Raft) ReplaceLogWithSnapshot(index int, data []byte) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if index <= rf.snapshotIndex {
+		rf.logger.Debugf("[%vT%vS%v] reject replace log with snapshot index %v current %v", rf.me, rf.currentTerm, rf.snapshotIndex, index, rf.snapshotIndex)
 		return
 	}
-	util.DPrintf("[%vT%vS%v] replace log with snapshot until index %v", rf.me, rf.currentTerm, rf.snapshotIndex, index)
+	rf.logger.Debugf("[%vT%vS%v] replace log with snapshot until index %v", rf.me, rf.currentTerm, rf.snapshotIndex, index)
 	rf.logs = rf.logs[rf.toRelative(index):]
 	rf.snapshotIndex = index
 	rf.persister.SaveStateAndSnapshot(rf.encodeState(), data)
@@ -711,6 +718,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	for i := range rf.nextIndex {
 		rf.nextIndex[i] = len(rf.logs)
 	}
+	rf.logger = logrus.New()
+	rf.logger.SetLevel(logrus.ErrorLevel)
 	rf.mu.Lock()
 	rf.readPersist(persister.ReadRaftState())
 	rf.mu.Unlock()
@@ -719,4 +728,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.electTimer = time.NewTimer(RandomRange(ElectTimeoutMin, ElectTimeoutMax) * time.Millisecond)
 	go rf.startTimer()
 	return rf
+}
+
+func (rf *Raft) SetLogLevel(level logrus.Level) {
+	rf.logger.SetLevel(level)
 }

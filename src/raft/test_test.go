@@ -9,7 +9,6 @@ package raft
 //
 
 import (
-	"distributed/util"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -343,9 +342,9 @@ func TestBackup2B(t *testing.T) {
 	// put leader and one follower in a partition
 	leader1 := cfg.checkOneLeader()
 
-	util.DPrintf("%v disconnected", (leader1+2)%servers)
-	util.DPrintf("%v disconnected", (leader1+3)%servers)
-	util.DPrintf("%v disconnected", (leader1+4)%servers)
+	DPrintf("%v disconnected", (leader1+2)%servers)
+	DPrintf("%v disconnected", (leader1+3)%servers)
+	DPrintf("%v disconnected", (leader1+4)%servers)
 
 	cfg.disconnect((leader1 + 2) % servers)
 	cfg.disconnect((leader1 + 3) % servers)
@@ -358,15 +357,15 @@ func TestBackup2B(t *testing.T) {
 
 	time.Sleep(RaftElectionTimeout / 2)
 
-	util.DPrintf("%v disconnected", (leader1+0)%servers)
-	util.DPrintf("%v disconnected", (leader1+1)%servers)
+	DPrintf("%v disconnected", (leader1+0)%servers)
+	DPrintf("%v disconnected", (leader1+1)%servers)
 
 	cfg.disconnect((leader1 + 0) % servers)
 	cfg.disconnect((leader1 + 1) % servers)
 
-	util.DPrintf("%v connected", (leader1+2)%servers)
-	util.DPrintf("%v connected", (leader1+3)%servers)
-	util.DPrintf("%v connected", (leader1+4)%servers)
+	DPrintf("%v connected", (leader1+2)%servers)
+	DPrintf("%v connected", (leader1+3)%servers)
+	DPrintf("%v connected", (leader1+4)%servers)
 
 	// allow other partition to recover
 	cfg.connect((leader1 + 2) % servers)
@@ -384,9 +383,9 @@ func TestBackup2B(t *testing.T) {
 	if leader2 == other {
 		other = (leader2 + 1) % servers
 	}
-	util.DPrintf("%v connected", (leader1+4)%servers)
+	DPrintf("%v connected", (leader1+4)%servers)
 	cfg.connect((leader1 + 4) % servers)
-	util.DPrintf("%v disconnected", other)
+	DPrintf("%v disconnected", other)
 	cfg.disconnect(other)
 
 	// lots more commands that won't commit
@@ -398,12 +397,12 @@ func TestBackup2B(t *testing.T) {
 
 	// bring original leader back to life,
 	for i := 0; i < servers; i++ {
-		util.DPrintf("%v disconnected", i)
+		DPrintf("%v disconnected", i)
 		cfg.disconnect(i)
 	}
-	util.DPrintf("%v connected", (leader1+0)%servers)
-	util.DPrintf("%v connected", (leader1+1)%servers)
-	util.DPrintf("%v connected", other)
+	DPrintf("%v connected", (leader1+0)%servers)
+	DPrintf("%v connected", (leader1+1)%servers)
+	DPrintf("%v connected", other)
 
 	cfg.connect((leader1 + 0) % servers)
 	cfg.connect((leader1 + 1) % servers)
@@ -416,7 +415,7 @@ func TestBackup2B(t *testing.T) {
 
 	// now everyone
 	for i := 0; i < servers; i++ {
-		util.DPrintf("%v connected", i)
+		DPrintf("%v connected", i)
 		cfg.connect(i)
 	}
 	cfg.one(rand.Int(), servers, true)

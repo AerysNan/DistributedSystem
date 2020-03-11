@@ -7,6 +7,7 @@ package shardmaster
 import (
 	"crypto/rand"
 	"distributed/labrpc"
+	"distributed/util"
 	"math/big"
 	"time"
 )
@@ -33,8 +34,8 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	return ck
 }
 
-func (ck *Clerk) Query(num int) Config {
-	args := &QueryArgs{
+func (ck *Clerk) Query(num int) util.Config {
+	args := &util.QueryArgs{
 		Num:       num,
 		ClientId:  ck.clientId,
 		CommandId: ck.commandId,
@@ -42,7 +43,7 @@ func (ck *Clerk) Query(num int) Config {
 	for {
 		// try each known server.
 		for _, srv := range ck.servers {
-			var reply QueryReply
+			var reply util.QueryReply
 			ok := srv.Call("ShardMaster.Query", args, &reply)
 			if ok && !reply.WrongLeader {
 				ck.commandId++
@@ -54,7 +55,7 @@ func (ck *Clerk) Query(num int) Config {
 }
 
 func (ck *Clerk) Join(servers map[int][]string) {
-	args := &JoinArgs{
+	args := &util.JoinArgs{
 		Servers:   servers,
 		ClientId:  ck.clientId,
 		CommandId: ck.commandId,
@@ -62,7 +63,7 @@ func (ck *Clerk) Join(servers map[int][]string) {
 	for {
 		// try each known server.
 		for _, srv := range ck.servers {
-			var reply JoinReply
+			var reply util.JoinReply
 			ok := srv.Call("ShardMaster.Join", args, &reply)
 			if ok && !reply.WrongLeader {
 				ck.commandId++
@@ -74,7 +75,7 @@ func (ck *Clerk) Join(servers map[int][]string) {
 }
 
 func (ck *Clerk) Leave(gids []int) {
-	args := &LeaveArgs{
+	args := &util.LeaveArgs{
 		GIDs:      gids,
 		ClientId:  ck.clientId,
 		CommandId: ck.commandId,
@@ -82,7 +83,7 @@ func (ck *Clerk) Leave(gids []int) {
 	for {
 		// try each known server.
 		for _, srv := range ck.servers {
-			var reply LeaveReply
+			var reply util.LeaveReply
 			ok := srv.Call("ShardMaster.Leave", args, &reply)
 			if ok && !reply.WrongLeader {
 				ck.commandId++
@@ -94,7 +95,7 @@ func (ck *Clerk) Leave(gids []int) {
 }
 
 func (ck *Clerk) Move(shard int, gid int) {
-	args := &MoveArgs{
+	args := &util.MoveArgs{
 		Shard:     shard,
 		GID:       gid,
 		ClientId:  ck.clientId,
@@ -103,7 +104,7 @@ func (ck *Clerk) Move(shard int, gid int) {
 	for {
 		// try each known server.
 		for _, srv := range ck.servers {
-			var reply MoveReply
+			var reply util.MoveReply
 			ok := srv.Call("ShardMaster.Move", args, &reply)
 			if ok && !reply.WrongLeader {
 				ck.commandId++

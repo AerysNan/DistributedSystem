@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
-)
 
-// Debugging
+	"github.com/sirupsen/logrus"
+)
 
 func StateToString(state int) string {
 	switch state {
@@ -30,4 +30,13 @@ func EntriesToString(entries []LogEntry) string {
 
 func RandomRange(min int, max int) time.Duration {
 	return time.Duration(rand.Intn(max-min) + min)
+}
+
+const Debug = 1
+
+func DPrintf(format string, a ...interface{}) (n int, err error) {
+	if Debug > 0 {
+		logrus.Printf(format, a...)
+	}
+	return
 }

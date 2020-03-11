@@ -81,14 +81,14 @@ func (kv *KVServer) installSnapshot(snapshot []byte) {
 	d := labgob.NewDecoder(r)
 	if d.Decode(&kv.entries) != nil ||
 		d.Decode(&kv.commandIds) != nil {
-		util.DPrintf("[%vT%vS%v] install snapshot failed", kv.me, kv.rf.CurrentTerm(), kv.rf.SnapshotIndex())
+		DPrintf("[%vT%vS%v] install snapshot failed", kv.me, kv.rf.CurrentTerm(), kv.rf.SnapshotIndex())
 	}
 }
 
-func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
+func (kv *KVServer) Get(args *util.GetArgs, reply *util.GetReply) {
 	op := util.Op{
-		Key:       args.Key,
-		Type:      "Get",
+		Type:      util.OpGet,
+		Args:      *args,
 		ClientId:  args.ClientId,
 		CommandId: args.CommandId,
 	}
@@ -101,15 +101,15 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	if value, ok := kv.entries[args.Key]; ok {
 		reply.Value = value
 	} else {
-		reply.Err = ErrNoKey
+		reply.Err = util.ErrNoKey
 	}
 }
 
-func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
+func (kv *KVServer) PutAppend(args *util.PutAppendArgs, reply *util.PutAppendReply) {
+
 	op := util.Op{
-		Key:       args.Key,
-		Value:     args.Value,
 		Type:      args.Op,
+		Args:      *args,
 		ClientId:  args.ClientId,
 		CommandId: args.CommandId,
 	}
@@ -121,9 +121,10 @@ func (kv *KVServer) dispatch() {
 		if !message.CommandValid {
 			continue
 		}
+		DPrintf("KV[%v] got message %v", kv.me, message)
 		op := message.Command.(util.Op)
-		if op.Type == "Snapshot" {
-			kv.installSnapshot([]byte(op.Value))
+		if op.Type == util.OpSnapshot {
+			kv.installSnapshot(op.Args.(util.SnapshotArgs).Data)
 			continue
 		}
 		kv.mu.Lock()
@@ -132,10 +133,12 @@ func (kv *KVServer) dispatch() {
 			continue
 		}
 		switch op.Type {
-		case "Put":
-			kv.entries[op.Key] = op.Value
-		case "Append":
-			kv.entries[op.Key] += op.Value
+		case util.OpPut:
+			args := op.Args.(util.PutAppendArgs)
+			kv.entries[args.Key] = args.Value
+		case util.OpAppend:
+			args := op.Args.(util.PutAppendArgs)
+			kv.entries[args.Key] += args.Value
 		}
 		kv.commandIds[op.ClientId] = op.CommandId
 		kv.appliedRaftLogIndex = message.CommandIndex
@@ -175,6 +178,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
 	labgob.Register(util.Op{})
+	labgob.Register(util.GetArgs{})
+	labgob.Register(util.PutAppendArgs{})
 
 	kv := new(KVServer)
 	kv.me = me

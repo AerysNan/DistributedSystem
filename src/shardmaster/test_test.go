@@ -1,6 +1,7 @@
 package shardmaster
 
 import (
+	"distributed/util"
 	"fmt"
 	"sync"
 	"testing"
@@ -52,7 +53,7 @@ func check(t *testing.T, groups []int, ck *Clerk) {
 	}
 }
 
-func check_same_config(t *testing.T, c1 Config, c2 Config) {
+func check_same_config(t *testing.T, c1 util.Config, c2 util.Config) {
 	if c1.Num != c2.Num {
 		t.Fatalf("Num wrong")
 	}
@@ -86,7 +87,7 @@ func TestBasic(t *testing.T) {
 
 	fmt.Printf("Test: Basic leave/join ...\n")
 
-	cfa := make([]Config, 6)
+	cfa := make([]util.Config, 6)
 	cfa[0] = ck.Query(-1)
 
 	check(t, []int{}, ck)
@@ -139,9 +140,9 @@ func TestBasic(t *testing.T) {
 		ck.Join(map[int][]string{gid3: []string{"3a", "3b", "3c"}})
 		var gid4 int = 504
 		ck.Join(map[int][]string{gid4: []string{"4a", "4b", "4c"}})
-		for i := 0; i < NShards; i++ {
+		for i := 0; i < util.NShards; i++ {
 			cf := ck.Query(-1)
-			if i < NShards/2 {
+			if i < util.NShards/2 {
 				ck.Move(i, gid3)
 				if cf.Shards[i] != gid3 {
 					cf1 := ck.Query(-1)
@@ -160,8 +161,8 @@ func TestBasic(t *testing.T) {
 			}
 		}
 		cf2 := ck.Query(-1)
-		for i := 0; i < NShards; i++ {
-			if i < NShards/2 {
+		for i := 0; i < util.NShards; i++ {
+			if i < util.NShards/2 {
 				if cf2.Shards[i] != gid3 {
 					t.Fatalf("expected shard %v on gid %v actually %v",
 						i, gid3, cf2.Shards[i])
@@ -257,7 +258,7 @@ func TestMulti(t *testing.T) {
 
 	fmt.Printf("Test: Multi-group join/leave ...\n")
 
-	cfa := make([]Config, 6)
+	cfa := make([]util.Config, 6)
 	cfa[0] = ck.Query(-1)
 
 	check(t, []int{}, ck)
